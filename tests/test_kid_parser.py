@@ -28,6 +28,7 @@ def test_ishares_core_msci_world():
     assert kid.phone == "+49 89427295800"
     assert kid.email == "info@ishares.co.uk"
     assert kid.currency == "USD"
+    assert kid.index == "MSCI World Index"  # "reflects the return of the MSCI World Index"
     assert kid.sfdr_article is None
     assert kid.distribution_policy == "Accumulating"
     assert kid.intended_for == "Retail"
@@ -127,6 +128,7 @@ def test_lg_clean_water():
     assert kid.issuer == "LGIM Managers (Europe) Limited"
     assert kid.phone == "+44 (0) 203 124 3180"
     assert kid.currency == "USD"
+    assert kid.index == "Solactive Clean Water Index NTR"
     assert kid.distribution_policy == "Accumulating"
     assert kid.intended_for is None  # body text names no audience, only the mandatory heading does
     assert kid.sri == 5
@@ -233,6 +235,7 @@ def test_fr_robeco_english_style_numbers():
     assert kid.issuer == "Robeco Institutional Asset Management B.V"
     assert kid.custodian == "J.P. Morgan SE"
     assert kid.sfdr_article == "Article 9"
+    assert kid.index == "MSCI All Country World Index"  # "Indice de référence: MSCI ..."
     assert kid.sri == 5
     assert kid.rhp_years == 5  # "5 Ans"
     # "3,100 EUR" is three thousand one hundred, "-69.0%" a dot decimal
@@ -300,7 +303,7 @@ def test_fr_ishares_matches_english_kid_of_same_fund():
     en = parse_kid(FIXTURES / "PRP_DE_en_IE00BL6K8D99_YES_2026-04-09.pdf")
 
     # "Produit <name> (le « Fonds ») <class> (la « Catégorie d'actions »)"
-    for field in ("isin", "product_name", "share_class", "issuer", "currency", "sri", "rhp_years", "production_date"):
+    for field in ("isin", "product_name", "share_class", "issuer", "currency", "sri", "rhp_years", "production_date", "index"):
         assert getattr(fr, field) == getattr(en, field), field
     assert fr.custodian == "The Bank of New York Mellon SA/NV, succursale de Dublin"
     # "Tension*" / "Défavorable**" row labels, "7.890 EUR" dot thousands
@@ -326,6 +329,8 @@ def test_fr_amundi_etf_currency_before_amount():
     assert kid.issuer == "Amundi Asset Management"
     assert kid.custodian == "CACEIS Bank"
     assert kid.is_ucits is True
+    # "répliquer le plus fidèlement possible la performance de l'indice ..."
+    assert kid.index == "MSCI EM ex-Egypt ESG Broad CTB Select Index"
     # the "Classification AMF (...) : Actions ..." line that follows is not part of the term
     for amundi in (kid, _fr("FR001400AED5_2026-07-17")):
         assert amundi.term == (
@@ -353,6 +358,8 @@ def test_fr_cpr_amundi_group_template():
     assert kid.phone == "+33 153157000"  # "appeler le"
     assert kid.custodian == "CACEIS Bank, succursale de Luxembourg"
     assert kid.sfdr_article == "Article 8"
+    # only an unnamed "Indice de référence a posteriori"; the MSCI ACWI is the performance-fee hurdle
+    assert kid.index is None
     cost = kid.cost_section
     assert (cost.total_cost_1y.value, cost.total_cost_rhp.value) == (714.0, 2183.0)
     assert (cost.cost_impact_pct_1y, cost.cost_impact_pct_rhp) == (7.3, 3.6)
@@ -372,6 +379,7 @@ def test_fr_oddo_bhf():
     assert kid.website == "http://am.oddo-bhf.com"
     assert kid.custodian == "ODDO BHF SCA"
     assert kid.sfdr_article == "Article 8"  # "classifié article 8 selon le Règlement (UE) 2019/2088"
+    assert kid.index == "MSCI Europe Small Caps"  # "surperformer l'indice « MSCI Europe Small Caps »"
     # singular "Tension" row label
     assert _scenario(kid, "stress") == (3940.0, -60.6, 3300.0, -19.9)
     cost = kid.cost_section
@@ -393,6 +401,7 @@ def test_fr_independance_am():
     assert kid.phone == "(+33) 1 40 76 02 85"
     assert kid.sri == 4  # "dans l'indicateur de risque 4 sur 7"
     assert kid.currency == "EUR"
+    assert kid.index is None  # the Stoxx index only sets the performance-fee hurdle
     # "EUR 4 340 EUR 3 850"
     assert _scenario(kid, "stress") == (4340.0, -56.6, 3850.0, -17.38)
     assert _scenario(kid, "favourable") == (15910.0, 59.1, 25240.0, 20.34)
@@ -415,6 +424,10 @@ def test_fr_societe_generale_bourso_fivg():
     assert kid.issuer == "Société Générale Investment Solutions (France)"
     assert kid.custodian == "Société Générale"
     assert kid.is_ucits is False  # FIVG
+    # the iShares master's "reflète le rendement total net de l'indice ..."
+    assert kid.index == "MSCI World Index"
+    # SG's own feeder: "répliquer, le plus fidèlement possible, la performance de l'Indice MSCI EUROPE"
+    assert _fr("FR001400RWJ8_2026-07-23").index == "MSCI EUROPE"
     assert kid.intended_for == "Retail"  # "Type d'investisseurs visés : ... tout souscripteur"
     # "Scénario de tension", dot decimals "-61.40%"
     assert _scenario(kid, "stress") == (3860.0, -61.4, 3940.0, -17.0)
@@ -434,6 +447,7 @@ def test_fr_natixis_mirova():
     assert kid.custodian == "Brown Brothers Harriman (Luxembourg) S.C.A"
     assert kid.intended_for == "Retail/Professional"  # "institutionnels et de détail"
     assert kid.sri == 5
+    assert kid.index is None  # the MSCI ACWI is only an indicative comparison
     # "Défavorable (*)" row labels
     assert _scenario(kid, "stress") == (3200.0, -68.0, 2140.0, -26.6)
     assert _scenario(kid, "unfavourable") == (6990.0, -30.1, 9970.0, -0.1)

@@ -305,9 +305,30 @@ def extract_custodian(flat):
     return clean(m.group(1)) if m else None
 
 
+# What precedes the index name: the tracked index of a passive fund, or the
+# stated benchmark of an active one. Performance-fee hurdles and "a
+# posteriori" comparison indicators are deliberately not matched.
+INDEX_ANCHORS = (
+    # iShares: "similaire au rendement net du MSCI World Index, l'indice de référence"
+    r"similaire au rendement(?: total)?(?: net)?\s+(?:du|de)\s*",
+    # iShares PEA feeders: "reflète le rendement total net de l'indice MSCI World Index,"
+    r"reflète le rendement(?: total)?(?: net)? de\s*",
+    # SG, Amundi ETF: "répliquer, le plus fidèlement possible, la performance de l'Indice MSCI EUROPE"
+    r"répliquer,?(?: le plus fidèlement possible,?)? la performance de\s*",
+    # ODDO: "surperformer l'indice « MSCI Europe Small Caps »"
+    r"surperformer\s*",
+    # La Française, Robeco: "l'indice de référence MSCI ...", "Indice de référence: MSCI ..."
+    r"[Ii]ndice de référence\s*(?:est\s*)?:?\s*(?:l[ea]\s+)?",
+)
+INDEX_NAME = r"(?:l['’]|le |la |du )?(?:[Ii]ndice\s+)?(?:«\s*)?([A-Z][^.(,;«»]+?)\s*(?:\(|\.|,|;|»)"
+
+
 def extract_index(flat):
-    m = re.search(r"indice de référence\s*(?:est\s*)?:?\s*(?:l[ea]\s+)?([A-Z][^.(,;]+?)\s*(?:\(|\.|,|;)", flat)
-    return clean(m.group(1)) if m else None
+    for anchor in INDEX_ANCHORS:
+        m = re.search(anchor + INDEX_NAME, flat)
+        if m:
+            return clean(m.group(1))
+    return None
 
 
 def extract_currency(flat):

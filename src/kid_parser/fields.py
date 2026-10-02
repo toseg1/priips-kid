@@ -175,10 +175,10 @@ def extract_custodian(flat):
 
 
 def extract_index(flat):
-    m = re.search(r"reflects? the return of ([^,(]+)", flat, re.I)
+    m = re.search(r"reflects? the return of (?:the\s+)?([^,(]+)", flat, re.I)
     if m:
         return clean(m.group(1))
-    m = re.search(r"track(?:s|ing)? the performance of ([^(]+?)\s*\(", flat, re.I)
+    m = re.search(r"track(?:s|ing)? the performance of (?:the\s+)?([^(]+?)\s*\(", flat, re.I)
     return clean(m.group(1)) if m else None
 
 
