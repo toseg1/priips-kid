@@ -174,12 +174,32 @@ def extract_custodian(flat):
     return clean(m.group(1)) if m else None
 
 
+ACTIVE_BENCHMARK_ANCHORS = (
+    # "aims to outperform the MSCI Europe Index (the Benchmark)"
+    r"[Oo]utperform(?:s|ing)?\s+(?:the\s+)?",
+    # "Benchmark: MSCI World Index", "Benchmark index: ..."
+    r"[Bb]enchmark(?: [Ii]ndex)?\s*:\s*(?:the\s+)?",
+    # "actively managed with reference to the S&P 500 Index"
+    r"(?:managed|by) (?:with )?reference to\s+(?:the\s+)?",
+)
+BENCHMARK_NAME = r"(?!None\b|N/?A\b)([A-Z][^.(,;]+?)\s*(?:\(|\.|,|;)"
+
+
 def extract_index(flat):
     m = re.search(r"reflects? the return of (?:the\s+)?([^,(]+)", flat, re.I)
     if m:
         return clean(m.group(1))
     m = re.search(r"track(?:s|ing)? the performance of (?:the\s+)?([^(]+?)\s*\(", flat, re.I)
-    return clean(m.group(1)) if m else None
+    if m:
+        return clean(m.group(1))
+    # Active funds' stated benchmark, tried only once no tracked index is
+    # found. The name must start with a capital, and "None"/"N/A" are
+    # skipped ("Benchmark: None").
+    for anchor in ACTIVE_BENCHMARK_ANCHORS:
+        m = re.search(anchor + BENCHMARK_NAME, flat)
+        if m:
+            return clean(m.group(1))
+    return None
 
 
 def extract_currency(flat):

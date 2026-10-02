@@ -491,3 +491,16 @@ def test_supervisor_is_the_fund_domicile_regulator():
     # "Banque centrale d'Irlande (la « BCI »)" -> same acronym as in English
     assert _fr("IE00BL6K8D99_2026-04-09").supervisor == "CBI"
     assert parse_kid(FIXTURES / "PRP_DE_en_LU2109787049_YES_2026-06-15.pdf").supervisor == "CSSF"
+
+
+def test_english_active_benchmark_wordings():
+    # no active-fund English fixture yet: synthetic sentences
+    from kid_parser.fields import extract_index
+
+    assert extract_index("The Fund aims to outperform the MSCI Europe Index (the Benchmark) over 5 years.") == "MSCI Europe Index"
+    assert extract_index("Benchmark: MSCI World Index. The fund is actively managed.") == "MSCI World Index"
+    assert extract_index("The fund is actively managed with reference to the S&P 500 Index (the benchmark).") == "S&P 500 Index"
+    assert extract_index("Benchmark: None. The fund is actively managed.") is None
+    assert extract_index("It seeks to outperform its benchmark over the long term.") is None
+    # a tracked index wins over a stated benchmark
+    assert extract_index("Benchmark: MSCI ACWI. It aims to track the performance of the FTSE 100 Index (the Index).") == "FTSE 100 Index"
