@@ -92,7 +92,8 @@ def test_amundi_emerging_markets_esg():
 
     assert kid.isin == "LU2109787049"
     assert kid.product_name == "Amundi MSCI Emerging Markets ESG Broad Transition UCITS ETF Acc"
-    assert kid.share_class is None  # no quoted "Share Class" in this template
+    # no quoted "Share Class": taken from the name suffix, as in French Amundi KIDs
+    assert kid.share_class == "Acc"
     assert kid.issuer == "Amundi Luxembourg S.A"
     assert kid.currency == "USD"
     assert kid.sfdr_article == "Article 8"
@@ -289,7 +290,8 @@ def test_fr_eiffel_eltif_with_performance_fee():
     assert _scenario(kid, "moderate") == (10767.0, 7.67, 14712.0, 8.03)
     cost = kid.cost_section
     assert (cost.cost_impact_pct_1y, cost.cost_impact_pct_rhp) == (2.02, 2.18)
-    assert cost.breakdown.performance_fees.pct == 15.0
+    # "15 % TTC max de la performance annuelle" rate, real amount 0 EUR
+    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (15.0, 0.0)
     assert cost.performance_fees_yn is True
 
 
@@ -351,6 +353,9 @@ def test_fr_cpr_amundi_group_template():
     # the management-fee row no longer leaks into exit costs
     assert cost.breakdown.exit_costs.pct is None
     assert (cost.breakdown.management_fees.pct, cost.breakdown.management_fees.amount.value) == (1.95, 185.63)
+    # "15,00 % annuel de performance au-delà ..." rate, real amount 1,05 EUR
+    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (15.0, 1.05)
+    assert cost.performance_fees_yn is True
 
 
 def test_fr_oddo_bhf():
@@ -390,8 +395,10 @@ def test_fr_independance_am():
     assert (cost.total_cost_1y.value, cost.total_cost_rhp.value) == (598.0, 4424.0)
     assert (cost.cost_impact_pct_1y, cost.cost_impact_pct_rhp) == (5.9, 5.0)
     assert (cost.breakdown.entry_costs.pct, cost.breakdown.entry_costs.amount.value) == (2.0, 200.0)
-    # "Commissions liées aux résultats (et commission d'intéressement)"
-    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (1.52, 152.0)
+    # "Commissions liées aux résultats (et commission d'intéressement) 1,52%
+    # Description : 10% lorsque la performance ...": pct is the 10 % fee
+    # rate, not the 1.52 % impact; amount is the real EUR amount
+    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (10.0, 152.0)
     assert cost.performance_fees_yn is True
 
 

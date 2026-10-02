@@ -19,7 +19,7 @@ rather than the English MONEY pattern.
 import re
 from datetime import date
 
-from .text import clean, find
+from .text import clean, find, find_rate_pct, share_class_from_name
 
 CURRENCY = r"(€|EUR|USD|GBP|CHF)"
 # A thousands group is exactly 3 digits after a space/dot/comma separator;
@@ -197,7 +197,7 @@ def extract_product_and_class(flat):
     )
     if m:
         name = clean(m.group(1))
-        return name, _amundi_share_class(name)
+        return name, share_class_from_name(name)
     # FFG-style: "Produit <name> un compartiment de <umbrella> classe <class> - <ISIN>"
     m = re.search(r"Produit\s+(.+?)\s+un compartiment de .+? classe (.+?)\s*-\s*[A-Z]{2}[A-Z0-9]{9}\d", flat)
     if m:
@@ -212,18 +212,6 @@ def extract_product_and_class(flat):
         cm = re.search(r"Code ISIN (Part \S+)\s*:", flat)
         return clean(m.group(1)), clean(cm.group(1)) if cm else None
     return None, None
-
-
-# Amundi class suffix: up to two short code tokens ("S", "A EUR", "I2")
-# then " - Acc"/" - Dist"/" - C"/" - D". UCITS/ETF are part of the fund name.
-AMUNDI_CLASS = re.compile(
-    r"\s((?:(?!ETF\b|UCITS\b)[A-Z][A-Z0-9]{0,3}\s){0,2}-\s(?:Acc|Dist|Inc|C|D))$"
-)
-
-
-def _amundi_share_class(name):
-    m = AMUNDI_CLASS.search(name)
-    return clean(m.group(1).lstrip("- ")) if m else None
 
 
 def extract_issuer(flat):
@@ -515,6 +503,8 @@ def extract_cost_breakdown(flat):
             "pct": pct,
             "amount": amount,
         }
+        if key == "performance_fees":
+            performance_chunk = chunk
 
     # "Néant" rows carry no currency of their own: take the table's
     currency = next((v["amount"]["currency"] for v in breakdown.values() if v["amount"] and v["amount"]["currency"]), None)
@@ -528,4 +518,8 @@ def extract_cost_breakdown(flat):
         if performance_desc
         else None
     )
+    if performance_fees_yn:
+        # pct is the fee rate (% of outperformance), not its cost impact
+        rate_m = find_rate_pct(performance_chunk, PCT_FR, r"performance|résultats")
+        breakdown["performance_fees"]["pct"] = parse_pct(rate_m.group(1)) if rate_m else None
     return breakdown, performance_fees_yn

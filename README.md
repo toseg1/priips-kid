@@ -67,7 +67,11 @@ automatically and parsed with their own pattern set
 French issuers mix three number formats ("10 000 €", "10.000 EUR",
 "10,000 EUR"); amounts with exactly three digits after a separator are read
 as thousands, everything else as decimals. The currency may also come first
-("€4 380", "EUR 10 000"). Scenario keys stay in English
+("€4 380", "EUR 10 000").
+
+In the cost breakdown, `pct` is the impact on your investment for every row
+except performance fees, where it is the fee rate (e.g. 20 % of the
+outperformance) and `amount` is the real EUR amount from the cost table. Scenario keys stay in English
 (`stress`, `unfavourable`, `moderate`, `favourable`) whatever the language.
 
 ## Contributing
