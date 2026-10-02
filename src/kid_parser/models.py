@@ -191,6 +191,7 @@ class KidDocument:
     language: Optional[str] = None  # "en" | "fr"
     production_date: Optional[str] = None  # ISO date the KID was produced
     is_ucits: Optional[bool] = None
+    supervisor: Optional[str] = None  # fund domicile regulator: "AMF", "CSSF", "CBI", ...
 
     def to_dict(self):
         return {
@@ -225,6 +226,7 @@ class KidDocument:
             "language": self.language,
             "production_date": self.production_date,
             "is_ucits": self.is_ucits,
+            "supervisor": self.supervisor,
         }
 
     def to_json(self, indent=2):
@@ -262,6 +264,7 @@ class KidDocument:
             language=data.get("language"),
             production_date=data.get("production_date"),
             is_ucits=data.get("is_ucits"),
+            supervisor=data.get("supervisor"),
         )
 
     @classmethod

@@ -21,6 +21,7 @@ kid.share_class                       # "EUR Accu"
 kid.cost_section.total_cost_1y.value  # 18.0
 kid.language, kid.production_date     # ("en", "2026-04-09")
 kid.is_ucits                          # True
+kid.supervisor                        # "CBI" (fund domicile regulator: AMF, CSSF, CBI, ...)
 
 kids = parse_kids("path/to/kids_dir") # -> list[KidDocument]
 

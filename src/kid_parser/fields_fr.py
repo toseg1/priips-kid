@@ -271,7 +271,9 @@ def extract_type(flat):
 def extract_term(flat):
     return find(
         r"(?:DUREE DE VIE DE L'OPC|DURÉE|Durée(?: de vie| et modalités)?\s*:?|Terme)\s+(.{5,600}?)\s*"
-        r"(?=OBJECTIFS|Objectifs)",
+        # Amundi puts "Classification AMF (...) : Actions ..." between the
+        # term and the objectives
+        r"(?=OBJECTIFS|Objectifs|Classification AMF)",
         flat,
         flags=0,
     )

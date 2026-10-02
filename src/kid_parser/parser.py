@@ -107,6 +107,7 @@ def _assemble(pdf_path, flat, language, f, filename_fields, specific) -> KidDocu
         language=language,
         production_date=specific["production_date"],
         is_ucits=f.extract_is_ucits(flat),
+        supervisor=fields.extract_supervisor(isin),
     )
 
 

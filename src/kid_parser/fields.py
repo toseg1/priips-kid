@@ -265,6 +265,23 @@ def extract_example_investment(flat):
     return {"currency": m.group(1), "value": float(m.group(2).replace(",", ""))}
 
 
+# Regulator of the fund's home country, by ISIN country prefix. A fund's ISIN
+# carries its domicile, and the KID often names only the management
+# company's regulator (e.g. a Luxembourg SICAV run by a French manager says
+# "réglementé par l'AMF"), so the prefix is the reliable signal. One acronym
+# per authority whatever the KID language ("BCI" in French is the CBI).
+DOMICILE_SUPERVISORS = {
+    "FR": "AMF", "LU": "CSSF", "IE": "CBI", "DE": "BaFin", "NL": "AFM",
+    "BE": "FSMA", "AT": "FMA", "ES": "CNMV", "IT": "CONSOB", "CH": "FINMA",
+    "GB": "FCA", "LI": "FMA-LI", "DK": "Finanstilsynet", "SE": "FI", "FI": "FIN-FSA",
+}
+
+
+def extract_supervisor(isin):
+    """Shared by both languages: depends only on the ISIN."""
+    return DOMICILE_SUPERVISORS.get(isin[:2]) if isin else None
+
+
 def extract_scenario_time_frame(rhp_years):
     # PRIIPs KIDs always show 1 year as the short exit period; the
     # recommended period is the RHP, already extracted reliably from its own

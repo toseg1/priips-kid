@@ -326,6 +326,12 @@ def test_fr_amundi_etf_currency_before_amount():
     assert kid.issuer == "Amundi Asset Management"
     assert kid.custodian == "CACEIS Bank"
     assert kid.is_ucits is True
+    # the "Classification AMF (...) : Actions ..." line that follows is not part of the term
+    for amundi in (kid, _fr("FR001400AED5_2026-07-17")):
+        assert amundi.term == (
+            "La durée du produit est de 99 ans. La Société de gestion peut dissoudre le produit "
+            "par liquidation ou fusion avec un autre produit conformément aux exigences légales"
+        )
     # "€4 380 €3 350": each amount paired with its own leading symbol
     assert _scenario(kid, "stress") == (4380.0, -56.2, 3350.0, -19.6)
     assert _scenario(kid, "favourable") == (14900.0, 49.0, 15200.0, 8.7)
@@ -447,7 +453,7 @@ def test_fr_every_fixture_has_the_core_fields():
     assert len(kids) == 23
     for kid in kids:
         assert kid.language == "fr", kid.source_file
-        for field in ("isin", "product_name", "issuer", "production_date", "sri", "rhp_years", "currency", "distribution_policy"):
+        for field in ("isin", "product_name", "issuer", "production_date", "sri", "rhp_years", "currency", "distribution_policy", "supervisor"):
             assert getattr(kid, field) is not None, (kid.source_file, field)
         assert kid.cost_section.total_cost_1y is not None, kid.source_file
         assert kid.cost_section.breakdown.management_fees.pct is not None, kid.source_file
@@ -459,3 +465,15 @@ def test_english_kids_carry_language_and_production_date():
     assert kid.language == "en"
     assert kid.production_date == "2026-09-03"
     assert kid.is_ucits is True
+    assert kid.supervisor == "CBI"
+
+
+def test_supervisor_is_the_fund_domicile_regulator():
+    # LU funds run by French managers: the KID names the AMF (manager's
+    # regulator), but the fund itself is supervised by the CSSF
+    for isin_and_date in ("LU1902443420_2026-09-01", "LU1951200481_2026-04-13", "LU1832174962_2026-07-22"):
+        assert _fr(isin_and_date).supervisor == "CSSF", isin_and_date
+    assert _fr("FR001400RWK6_2026-07-23").supervisor == "AMF"
+    # "Banque centrale d'Irlande (la « BCI »)" -> same acronym as in English
+    assert _fr("IE00BL6K8D99_2026-04-09").supervisor == "CBI"
+    assert parse_kid(FIXTURES / "PRP_DE_en_LU2109787049_YES_2026-06-15.pdf").supervisor == "CSSF"
