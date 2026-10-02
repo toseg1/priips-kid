@@ -319,7 +319,8 @@ def test_fr_amundi_etf_currency_before_amount():
     kid = _fr("FR001400ZGO4_2026-07-13")
 
     assert kid.product_name == "Amundi PEA Emergent (MSCI Emerging) ESG Transition UCITS ETF S - Acc"
-    assert kid.share_class is None  # as in the English Amundi template
+    # the name keeps its class suffix, which is also reported on its own
+    assert kid.share_class == "S - Acc"
     assert kid.issuer == "Amundi Asset Management"
     assert kid.custodian == "CACEIS Bank"
     assert kid.is_ucits is True
@@ -338,7 +339,7 @@ def test_fr_amundi_etf_currency_before_amount():
 def test_fr_cpr_amundi_group_template():
     kid = _fr("LU1902443420_2026-09-01")
 
-    assert kid.product_name == "CPR Invest - Climate Action - A EUR - Acc"
+    assert (kid.product_name, kid.share_class) == ("CPR Invest - Climate Action - A EUR - Acc", "A EUR - Acc")
     assert kid.issuer == "CPR Asset Management"
     assert kid.production_date == "2026-09-01"  # "Ce document a été publié le 01/09/2026"
     assert kid.phone == "+33 153157000"  # "appeler le"
@@ -367,6 +368,8 @@ def test_fr_oddo_bhf():
     assert (cost.total_cost_1y.value, cost.total_cost_rhp.value) == (645.0, 1906.0)
     assert (cost.cost_impact_pct_1y, cost.cost_impact_pct_rhp) == (6.6, 3.5)
     assert (cost.breakdown.management_fees.pct, cost.breakdown.management_fees.amount.value) == (2.13, 204.0)
+    # the 20 % fee rate, and the actual EUR amount (based on the last 5 years)
+    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (20.0, 3.0)
     assert cost.performance_fees_yn is True
 
 
@@ -423,9 +426,12 @@ def test_fr_natixis_mirova():
     assert _scenario(kid, "unfavourable") == (6990.0, -30.1, 9970.0, -0.1)
     cost = kid.cost_section
     assert (cost.total_cost_1y.value, cost.total_cost_rhp.value) == (614.0, 1794.0)
-    assert cost.breakdown.exit_costs.amount is None  # "Néant"
-    # the market-timing "2 %" note after the table is not a performance fee
-    assert cost.breakdown.performance_fees.pct is None
+    # "Néant" means nothing is charged: 0, in the table's currency
+    exit_costs = cost.breakdown.exit_costs
+    assert (exit_costs.pct, exit_costs.amount.value, exit_costs.amount.currency) == (0.0, 0.0, "EUR")
+    assert exit_costs.description == "Nous ne facturons pas de coût de sortie"
+    # ... and the market-timing "2 %" note after the table is not a performance fee
+    assert (cost.breakdown.performance_fees.pct, cost.breakdown.performance_fees.amount.value) == (0.0, 0.0)
     assert cost.performance_fees_yn is False
 
 

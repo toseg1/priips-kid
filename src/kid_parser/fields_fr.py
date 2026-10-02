@@ -189,14 +189,15 @@ def extract_product_and_class(flat):
     if m:
         return clean(m.group(1)), None
     # Amundi / CPR: "Produit <name> Un Compartiment de ..." / "Produit <name>
-    # Société de gestion : ..."; the class stays inside the name, as in
-    # the English Amundi template.
+    # Société de gestion : ...". The name keeps its class suffix; the class
+    # is also reported on its own ("... UCITS ETF S - Acc" -> "S - Acc").
     m = re.search(
         r"Produit (.{3,150}?)\s+(?:Un Compartiment de|Société de gestion\s*:|[A-Z]{2}[A-Z0-9]{9}\d\s*-\s*Devise)",
         flat,
     )
     if m:
-        return clean(m.group(1)), None
+        name = clean(m.group(1))
+        return name, _amundi_share_class(name)
     # FFG-style: "Produit <name> un compartiment de <umbrella> classe <class> - <ISIN>"
     m = re.search(r"Produit\s+(.+?)\s+un compartiment de .+? classe (.+?)\s*-\s*[A-Z]{2}[A-Z0-9]{9}\d", flat)
     if m:
@@ -211,6 +212,18 @@ def extract_product_and_class(flat):
         cm = re.search(r"Code ISIN (Part \S+)\s*:", flat)
         return clean(m.group(1)), clean(cm.group(1)) if cm else None
     return None, None
+
+
+# Amundi class suffix: up to two short code tokens ("S", "A EUR", "I2")
+# then " - Acc"/" - Dist"/" - C"/" - D". UCITS/ETF are part of the fund name.
+AMUNDI_CLASS = re.compile(
+    r"\s((?:(?!ETF\b|UCITS\b)[A-Z][A-Z0-9]{0,3}\s){0,2}-\s(?:Acc|Dist|Inc|C|D))$"
+)
+
+
+def _amundi_share_class(name):
+    m = AMUNDI_CLASS.search(name)
+    return clean(m.group(1).lstrip("- ")) if m else None
 
 
 def extract_issuer(flat):
@@ -489,12 +502,25 @@ def extract_cost_breakdown(flat):
         amount = _money(amount_ms[-1][1], amount_ms[-1][2]) if amount_ms else None
         description = chunk[:amount_ms[-1][0].start()] if amount_ms else chunk
         description = re.sub(r"\b[Jj]usqu'à\s*$", "", description.strip())
+        pct = parse_pct(pct_m.group(1)) if pct_m else None
+        # "Néant" (Natixis) in the amount column means nothing is charged
+        nil = amount is None and re.search(r"\bNéant\s*$", description)
+        if nil:
+            description = description[:nil.start()]
+            amount = {"value": 0.0, "currency": None}
+            pct = 0.0 if pct is None else pct
 
         breakdown[key] = {
             "description": clean(description),
-            "pct": parse_pct(pct_m.group(1)) if pct_m else None,
+            "pct": pct,
             "amount": amount,
         }
+
+    # "Néant" rows carry no currency of their own: take the table's
+    currency = next((v["amount"]["currency"] for v in breakdown.values() if v["amount"] and v["amount"]["currency"]), None)
+    for v in breakdown.values():
+        if v["amount"] and v["amount"]["currency"] is None:
+            v["amount"]["currency"] = currency
 
     performance_desc = breakdown["performance_fees"]["description"] or ""
     performance_fees_yn = (
