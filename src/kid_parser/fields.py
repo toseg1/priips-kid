@@ -14,7 +14,7 @@ KidDocument model.
 
 import re
 
-from .text import CURRENCY_NAME_TO_CODE, MONEY, clean, find, parse_money
+from .text import CURRENCY_NAME_TO_CODE, MONEY, clean, find, find_rate_pct, parse_money, share_class_from_name
 
 FILENAME_RE = re.compile(
     r"PRP_(?P<country>[A-Z]{2})_(?P<lang>[a-z]{2})_(?P<isin>[A-Z0-9]{12})_"
@@ -104,10 +104,12 @@ def extract_product_and_class(product_section):
             re.I,
         )
         return name, clean(cm.group(1)) if cm else None
-    # Amundi-style: no quoted Share Class - product name is the first sentence-like chunk
+    # Amundi-style: no quoted Share Class - product name is the first
+    # sentence-like chunk; the class is its suffix ("... UCITS ETF Acc")
     m = re.match(r"\s*([A-Z][^.]*?UCITS[^.]*?)(?:\s+A Sub-Fund of|\s+ISIN|\.)", product_section)
     if m:
-        return clean(m.group(1)), None
+        name = clean(m.group(1))
+        return name, share_class_from_name(name)
     return None, None
 
 
@@ -391,10 +393,16 @@ def extract_cost_breakdown(flat):
             "pct": pct,
             "amount": amount,
         }
+        if key == "performance_fees":
+            performance_chunk = flat_chunk
 
     performance_desc = (breakdown["performance_fees"]["description"] or "")
     performance_fees_yn = not bool(
         re.search(r"no performance fee", performance_desc, re.I)
     ) if performance_desc else None
+    if performance_fees_yn:
+        # pct is the fee rate (% of outperformance), not its cost impact
+        rate_m = find_rate_pct(performance_chunk, r"([\d.]+)%", r"performance")
+        breakdown["performance_fees"]["pct"] = float(rate_m.group(1)) if rate_m else None
 
     return breakdown, performance_fees_yn
