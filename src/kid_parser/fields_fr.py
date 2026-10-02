@@ -5,13 +5,15 @@ Same contract as kid_parser.fields: every function takes the normalized
 ("flat") text and returns plain values. Anchored on the headings the French
 translation of the PRIIPs RTS mandates ("Nous avons classé ce produit dans
 la classe de risque N sur 7", "Coûts totaux", "Incidence des coûts", ...).
-Verified against 6 templates: Crédit Mutuel AM (OPCVM and FIA), Robeco,
-FFG/Waystone, La Française, Eiffel IG.
+Verified against 13 templates: Crédit Mutuel AM (OPCVM and FIA), Robeco,
+FFG/Waystone, La Française, Eiffel IG, Amundi, CPR AM, BlackRock/iShares,
+ODDO BHF AM, Natixis IM, Indépendance AM, Société Générale IS.
 
 French KIDs mix three number formats depending on the issuer -- "10 000 €",
 "10.000 EUR" (dot thousands, comma decimals) and "10,000 EUR" / "6.9%"
-(English-style, Robeco) -- so amounts and percentages have their own
-parsers below rather than the English MONEY pattern.
+(English-style, Robeco) -- and some put the currency first ("€4 380",
+"EUR 10 000"), so amounts and percentages have their own parsers below
+rather than the English MONEY pattern.
 """
 
 import re
@@ -24,38 +26,63 @@ CURRENCY = r"(€|EUR|USD|GBP|CHF)"
 # anything else after a separator is a decimal part.
 AMOUNT = r"(-?\d{1,3}(?:[ .,]\d{3})*(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d+)?)"
 MONEY_FR = AMOUNT + r"\s?" + CURRENCY
+# Amundi / CPR ("€4 380"), Indépendance ("EUR 4 340"), iShares ("EUR 10.000")
+MONEY_FR_PREFIX = CURRENCY + r"\s?" + AMOUNT
+# One alternation so a left-to-right scan pairs each amount with its own
+# currency: "€4 380 €3 350" must not read as "4 380 €" + a bare "3 350".
+MONEY_FR_ANY = re.compile(r"(?:" + MONEY_FR_PREFIX + r")|(?:" + MONEY_FR + r")")
 PCT_FR = r"(-?\s?\d+(?:[.,]\d+)?)\s?%"
 
-# Scenario rows are labelled "Tensions" / "Scénario de tensions" etc. and
+# Scenario rows are labelled "Tensions" / "Scénario de tension(s)" etc. and
 # are always followed by the table's own "Si vous sortez"/"Ce que vous
 # pourriez obtenir" text -- that lookahead keeps prose mentions ("Le
 # scénario de tensions montre ...") from matching. \b keeps "favorable"
 # from matching inside "défavorable" ("é" is a word character).
 SCENARIO_LABELS = [
-    ("stress", r"(?:Sc[ée]nario de )?\b[Tt]ensions"),
+    ("stress", r"(?:Sc[ée]nario de )?\b[Tt]ensions?"),
     ("unfavourable", r"(?:Sc[ée]nario )?\b[Dd]éfavorable"),
     ("moderate", r"(?:Sc[ée]nario )?\b[Ii]ntermédiaire"),
     ("favourable", r"(?:Sc[ée]nario )?\b[Ff]avorable"),
 ]
-SCENARIO_ROW_START = r"\s*:?\s*(?=Si vous sortez|Ce que vous pourriez)"
-SCENARIO_END = r"Ce type de sc[ée]nario|Sc[ée]nario défavorable :|Que se passe|QUE SE PASSE|Ce tableau"
+# Footnote markers may sit between label and row: "Défavorable**"
+# (iShares), "Défavorable (*)" (Natixis).
+SCENARIO_ROW_START = r"\s*(?:\(\*+\)|\*+)?\s*:?\s*(?=Si vous sortez|Ce que vous pourriez)"
+SCENARIO_END = r"Ce type de sc[ée]nario|Sc[ée]nario défavorable :|Que se passe|QUE SE PASSE|Ce tableau|Les chiffres indiqués|\(?\*+\)? (?:Le|Ce) "
 
 BOILERPLATE = [
     r"Co[ûu]ts (?:ponctuels|uniques) à l'entrée ou à la sortie\s*",
-    r"Co[ûu]ts récurrents\s*\[?prélevés chaque année\]?\s*",
-    r"Co[ûu]ts (?:accessoires|récurrents) prélevés sous certaines conditions\s*",
-    r"Si vous sortez après 1 [Aa]n\s*",
+    r"Co[ûu]ts d'entrée ou de sortie ponctuels\s*",
+    r"Co[ûu]ts ponctuels d'entrée ou de sortie\s*",
+    r"Co[ûu]ts récurrents\s*[\[(]?(?:prélevés|encourus) chaque année[\])]?\s*",
+    r"Co[ûu]ts (?:accessoires|récurrents) (?:prélevés|encourus) (?:sous certaines|dans des) conditions(?: spécifiques)?\s*",
+    r"Si vous sortez après:? 1 [Aa]n\s*",
 ]
 
 # Case-sensitive: the table labels are capitalized, the surrounding prose
 # ("Aucun coût d'entrée n'est appliqué") is not.
 COST_CATEGORIES = [
-    ("entry_costs", r"Co[ûu]ts? d'entrée"),
-    ("exit_costs", r"(?:Co[ûu]ts?|Frais) de sortie"),
-    ("management_fees", r"Frais de gestion et autres frais administratifs?\s*et d'exploitation"),
-    ("transaction_costs", r"(?:Co[ûu]ts|Frais) de transaction"),
-    ("performance_fees", r"Commissions liées aux (?:résultats|performances)(?: et commission d'intéressement)?"),
+    # not iShares' "Coûts d'entrée ou de sortie ponctuels" section heading
+    ("entry_costs", r"Co[ûu]ts? d'entrée(?! ou de sortie)\*?"),
+    ("exit_costs", r"(?:Co[ûu]ts?|Frais) de sortie\*?"),
+    # "... autres frais administratifs et d'exploitation" (most issuers),
+    # "... autres coûts administratifs ou (frais) d'exploitation" (Amundi, iShares)
+    ("management_fees", r"Frais de gestion et autres (?:frais|co[ûu]ts) administratifs?\s*(?:et|ou) (?:frais )?d'exploitation\.?"),
+    # not the quoted cross-reference inside iShares' management-fee row
+    ("transaction_costs", r"(?<!« )(?:Co[ûu]ts|Frais) de transaction"),
+    ("performance_fees", r"Commissions liées aux (?:résultats|performances)(?:\s*\(?et commission d'intéressement\)?)?"),
 ]
+CURRENCY_NAME_FR = {
+    "euro": "EUR", "dollar américain": "USD", "dollar US": "USD",
+    "livre sterling": "GBP", "franc suisse": "CHF",
+}
+
+INTENDED_HEADING = (
+    r"INVESTISSEURS DE DETAIL VISES|Investisseurs? de détail visés?|Type d'investisseurs visés"
+)
+
+# Footnotes that follow the cost table and would otherwise leak amounts
+# into the last row ("10 000 EUR sont investis", "prélèvement ... 2 %").
+COST_SECTION_END = r"COMBIEN DE TEMPS|Combien de temps|Les tableaux (?:ci-dessus|présentent)|Un investisseur qui s'engage"
 
 
 def parse_amount(token):
@@ -84,6 +111,19 @@ def _money(amount, symbol):
     return {"value": parse_amount(amount), "currency": _currency(symbol)}
 
 
+def _find_money(text):
+    """Every amount in `text` as (match, amount, symbol), whichever side
+    the currency is written on."""
+    found = []
+    for m in MONEY_FR_ANY.finditer(text):
+        prefix_symbol, prefix_amount, suffix_amount, suffix_symbol = m.groups()
+        if prefix_amount is not None:
+            found.append((m, prefix_amount, prefix_symbol))
+        else:
+            found.append((m, suffix_amount, suffix_symbol))
+    return found
+
+
 def extract_isin(flat, filename_isin):
     if filename_isin:
         return filename_isin
@@ -94,12 +134,29 @@ def extract_isin(flat, filename_isin):
     return m.group(1) if m else None
 
 
+MOIS = {
+    m: i for i, m in enumerate(
+        ["janvier", "février", "mars", "avril", "mai", "juin", "juillet",
+         "août", "septembre", "octobre", "novembre", "décembre"], start=1)
+}
+MOIS.update({"fevrier": 2, "aout": 8, "decembre": 12})
+
+
 def extract_production_date(flat):
-    m = re.search(r"Date de (?:production|publication)[^\d]{0,60}?(\d{1,2})/(\d{1,2})/(\d{4})", flat)
-    if not m:
-        return None
-    day, month, year = (int(g) for g in m.groups())
-    return date(year, month, day).isoformat()
+    # "Date de production ... : 13/07/2026" (Indépendance: "22.07.2026"),
+    # "Ce document a été publié le 01/09/2026" (CPR)
+    m = re.search(
+        r"(?:Date de (?:production|publication)|publié le)[^\d]{0,60}?(\d{1,2})[/.](\d{1,2})[/.](\d{4})", flat
+    )
+    if m:
+        day, month, year = (int(g) for g in m.groups())
+        return date(year, month, day).isoformat()
+    # "Le présent document est daté du 09 avril 2026" (iShares),
+    # "... exact et à jour au 13 avril 2026" (Natixis)
+    m = re.search(r"(?:daté du|à jour au) (\d{1,2}) ([a-zéû]+) (\d{4})", flat)
+    if m and m.group(2) in MOIS:
+        return date(int(m.group(3)), MOIS[m.group(2)], int(m.group(1))).isoformat()
+    return None
 
 
 def extract_product_and_class(flat):
@@ -109,6 +166,37 @@ def extract_product_and_class(flat):
         name = clean(m.group(1))
         pm = re.match(r"(.+?)\s*-\s*(Part\s+\S+)$", name)
         return (clean(pm.group(1)), clean(pm.group(2))) if pm else (name, None)
+    # iShares: "Produit <name> (le « Fonds ») <class> (la « Catégorie d'actions »)"
+    m = re.search(r"Produit (.{3,150}?) \(le « Fonds »\) (.{2,60}?) \(la « Catégorie d'actions »\)", flat)
+    if m:
+        return clean(m.group(1)), clean(m.group(2))
+    # Natixis: "Produit <name> un Compartiment de <umbrella> <class> (code ISIN : ...)"
+    m = re.search(r"Produit (.{3,150}?) un Compartiment de .{3,100}?\s(\S+(?: \([A-Z]{3}\))?)\s*\(code ISIN", flat)
+    if m:
+        return clean(m.group(1)), clean(m.group(2))
+    # Indépendance AM: "<umbrella> 1/3 <name> un compartiment d'<umbrella> ... Classe <class> ISIN"
+    m = re.search(r"\d/\d\s+(.{3,100}?) un compartiment d'.{3,400}?Classe (.{1,20}?)\s+ISIN", flat)
+    if m:
+        return clean(m.group(1)), clean(m.group(2))
+    # ODDO BHF: "PRODUIT <name>, Organisme ... Part <name> <class> : <ISIN>"
+    m = re.search(r"PRODUIT (.{3,150}?), Organisme", flat)
+    if m:
+        name = clean(m.group(1))
+        cm = re.search(r"Part " + re.escape(name) + r" (\S+)\s*:\s*[A-Z]{2}[A-Z0-9]{9}\d", flat)
+        return name, clean(cm.group(1)) if cm else None
+    # Société Générale IS (Bourso): "... ce produit ? Objectif <name> Compartiment de la SICAV"
+    m = re.search(r"En quoi consiste ce produit \? Objectif (.{3,100}?) Compartiment de la SICAV", flat)
+    if m:
+        return clean(m.group(1)), None
+    # Amundi / CPR: "Produit <name> Un Compartiment de ..." / "Produit <name>
+    # Société de gestion : ..."; the class stays inside the name, as in
+    # the English Amundi template.
+    m = re.search(
+        r"Produit (.{3,150}?)\s+(?:Un Compartiment de|Société de gestion\s*:|[A-Z]{2}[A-Z0-9]{9}\d\s*-\s*Devise)",
+        flat,
+    )
+    if m:
+        return clean(m.group(1)), None
     # FFG-style: "Produit <name> un compartiment de <umbrella> classe <class> - <ISIN>"
     m = re.search(r"Produit\s+(.+?)\s+un compartiment de .+? classe (.+?)\s*-\s*[A-Z]{2}[A-Z0-9]{9}\d", flat)
     if m:
@@ -134,17 +222,32 @@ def extract_issuer(flat):
     if m:
         return clean(m.group(1))
     m = re.search(r"chargée du contrôle de (.+?) en ce qui concerne", flat)
+    if m:
+        return clean(m.group(1))
+    # iShares: "élaboré par <issuer> (le « Gestionnaire »)"
+    m = re.search(r"élaboré par (.{3,100}?) \(le « Gestionnaire »\)", flat)
+    if m:
+        return clean(m.group(1))
+    # Indépendance AM: "Nom de l'initiateur du PRIIP (...) : <issuer> Classe ..."
+    m = re.search(r"Nom de l'initiateur[^:]{0,120}:\s*(.{3,100}?)\s+(?:Classe|ISIN|Site)", flat)
+    if m:
+        return clean(m.group(1))
+    # Natixis: "Ce Produit est géré par <issuer>, qui fait partie ..."
+    m = re.search(r"(?:Ce Produit|Cet OPCVM|Le Fonds) est géré par (.{3,100}?)(?:,|\s+qui\b|\s+Part\b)", flat)
     return clean(m.group(1)) if m else None
 
 
 def extract_website(flat):
     m = re.search(r"\b(?:https?://)?www\.[^\s,;)]+", flat)
+    if not m:
+        # ODDO: "http://am.oddo-bhf.com" (no www.)
+        m = re.search(r"\bhttps?://[^\s,;)]+", flat)
     return clean(m.group(0).rstrip(".")) if m else None
 
 
 def extract_phone(flat):
     m = re.search(
-        r"(?:Appelez le(?: n°)?|Téléphonez au|appelez le|par téléphone au)\s*([+0-9][0-9 ()]{6,}\d)",
+        r"(?:Appelez le(?: n°)?|Téléphonez au|appele[zr] le|par téléphone au)\s*(\(?\+?[0-9][0-9 ()]{6,}\d)",
         flat,
     )
     return clean(m.group(1)) if m else None
@@ -157,30 +260,44 @@ def extract_email(flat):
 
 def extract_type(flat):
     return find(
-        r"(?:TYPE DE PRODUIT D'INVESTISSEMENT|Type(?: de produit)?\s*:?)\s+(.{5,400}?)\s*"
-        r"(?=DUREE DE VIE|Durée|OBJECTIFS|Objectifs|Ce document d'informations|Échéance)",
+        r"(?:TYPE DE PRODUIT D'INVESTISSEMENT|TYPE|Type(?: de produit)?\s*:?)\s+(.{5,400}?)\s*"
+        r"(?=DUREE DE VIE|DURÉE|Durée|Terme|OBJECTIFS|Objectifs|Ce document d'informations|Échéance)",
         flat,
         flags=0,
     )
 
 
 def extract_term(flat):
-    return find(r"(?:DUREE DE VIE DE L'OPC|Durée\s*:?)\s+(.{5,400}?)\s*(?=OBJECTIFS|Objectifs)", flat, flags=0)
-
-
-def extract_objective(flat):
     return find(
-        r"(?:OBJECTIFS|Objectifs\s*:?)\s+(.*?)\s*(?=INVESTISSEURS DE DETAIL VISES|Investisseurs de détail visés)",
+        r"(?:DUREE DE VIE DE L'OPC|DURÉE|Durée(?: de vie| et modalités)?\s*:?|Terme)\s+(.{5,600}?)\s*"
+        r"(?=OBJECTIFS|Objectifs)",
         flat,
         flags=0,
     )
 
 
-def extract_custodian(flat):
-    m = re.search(
-        r"(?:Nom du dépositaire|[Dd]épositaire(?: de la SICAV| du [Ff]onds| du compartiment)?)"
-        r"\s*(?:est|:)\s*(.+?)\s*(?=\s(?:Le|La|Les|Revenus|Autres|Pour|Ce|Cette|Des)\s)",
+def extract_objective(flat):
+    return find(
+        r"(?:OBJECTIFS|Objectifs\s*:?)\s+(.*?)\s*(?=" + INTENDED_HEADING + ")",
         flat,
+        flags=0,
+    )
+
+
+CUSTODIAN_LABEL = r"(?:Nom du dépositaire|[Dd]épositaire(?: du Produit| de la SICAV| du [Ff]onds| du compartiment)?)"
+# The name ends at the next sentence or section: a capitalized stop word,
+# or a full stop that isn't part of an initialism ("S.C.A.", "J.P.").
+CUSTODIAN_END = (
+    r"(?:\s*(?=\s(?:Le|La|Les|Revenus|Autres|Pour|Ce|Cette|Des|Page|Informations|Document|Quels|QUELS|L'utilisation)\s)"
+    r"|(?<![\s.][A-Z])\.(?=\s))"
+)
+
+
+def extract_custodian(flat):
+    # The labelled form ("Dépositaire du Produit : X") wins over prose like
+    # "le Dépositaire est tenu par la loi ..." (Natixis).
+    m = re.search(CUSTODIAN_LABEL + r"\s*:\s*(.+?)" + CUSTODIAN_END, flat) or re.search(
+        CUSTODIAN_LABEL + r"\s*est\s*(.+?)" + CUSTODIAN_END, flat
     )
     return clean(m.group(1)) if m else None
 
@@ -194,12 +311,16 @@ def extract_currency(flat):
     m = re.search(r"devise de (?:la classe d'actions|la part|référence)[^.]{0,30}?\b([A-Z]{3})\b", flat)
     if m:
         return m.group(1)
+    # iShares: "Vos actions seront libellées en euro"
+    m = re.search(r"libellées en (euro|dollar américain|dollar US|livre sterling|franc suisse)", flat)
+    if m:
+        return CURRENCY_NAME_FR[m.group(1)]
     example = extract_example_investment(flat)
     return example["currency"] if example else None
 
 
 def extract_sfdr_article(flat):
-    m = re.search(r"[Aa]rticle\s*(6|8|9)\b\s*(?:du|de la)\s*(?:[Rr]èglement|SFDR)(?!\s*ELTIF)", flat)
+    m = re.search(r"[Aa]rticle\s*(6|8|9)\b\s*(?:du|de la|selon le)\s*(?:[Rr]èglement|SFDR)(?!\s*ELTIF)", flat)
     return f"Article {m.group(1)}" if m else None
 
 
@@ -225,12 +346,15 @@ def extract_is_ucits(flat):
 
 def extract_intended_for(flat):
     body = find(
-        r"(?:INVESTISSEURS DE DETAIL VISES|Investisseurs de détail visés)\s*:?\s*(.*?)"
+        r"(?:" + INTENDED_HEADING + r")\s*:?\s*(.*?)"
         r"(?=INFORMATIONS PRATIQUES|Informations pratiques|Autres informations|Quels sont les risques|QUELS SONT)",
         flat,
         flags=0,
     ) or ""
-    is_retail = bool(re.search(r"investisseurs de détail|particuliers|tous (?:les )?(?:types d')?investisseurs|connaissance", body, re.I))
+    # "de détail" also covers Natixis' "investisseurs institutionnels et de détail"
+    is_retail = bool(re.search(
+        r"de détail|particuliers|tous (?:les )?(?:types d')?investisseurs|tout souscripteur|connaissance", body, re.I
+    ))
     is_professional = bool(re.search(r"professionnels|institutionnels|contreparties éligibles", body, re.I))
     if is_retail and is_professional:
         return "Retail/Professional"
@@ -242,7 +366,7 @@ def extract_intended_for(flat):
 
 
 def extract_sri(flat):
-    m = re.search(r"(?:classe de risque|niveau|catégorie)\s*(\d)\s*sur\s*7", flat)
+    m = re.search(r"(?:classe de risque|indicateur de risque|niveau|catégorie)\s*(\d)\s*sur\s*7", flat)
     return int(m.group(1)) if m else None
 
 
@@ -256,8 +380,12 @@ def extract_rhp_years(flat):
 
 
 def extract_example_investment(flat):
-    m = re.search(r"(?:Exemple d'investissement|Investissement)\s*:?\s*" + MONEY_FR, flat)
-    return _money(m.group(1), m.group(2)) if m else None
+    # "Investissement : 10 000 €", "Exemple d'investissement : EUR 10.000"
+    for m in re.finditer(r"(?:Exemple d'investissement|Investissement)\s*:?\s*", flat):
+        money = _find_money(flat[m.end():m.end() + 30])
+        if money and money[0][0].start() == 0:
+            return _money(money[0][1], money[0][2])
+    return None
 
 
 def extract_scenarios(flat):
@@ -277,7 +405,7 @@ def extract_scenarios(flat):
         # drop the "Si vous sortez après N an(s)" headers, whose year
         # counts would otherwise read as amounts
         chunk = re.sub(r"Si vous sortez après \d+ [Aa]ns?(?: \(période de détention recommandée\))?", "", chunk)
-        amounts = re.findall(MONEY_FR, chunk)
+        amounts = [(amount, symbol) for _, amount, symbol in _find_money(chunk)]
         pcts = re.findall(PCT_FR, chunk)
         if not amounts:
             continue
@@ -293,13 +421,16 @@ def extract_scenarios(flat):
 
 
 def extract_total_costs(flat):
-    m = re.search(
-        r"Co[ûu]ts? totaux?\s+(.*?)Incidence des co[ûu]ts(?: annuels)?\s*\(?\*?\)?\s*(.*?)(?=\(?\*|Elle montre|Cela illustre|Ceci illustre)",
-        flat,
-    ) or re.search(r"Co[ûu]t total\s+(.*?)Incidence des co[ûu]ts(?: annuels)?\s*\(?\*?\)?\s*(.*?)(?=\(?\*|Elle montre|Cela illustre|Ceci illustre)", flat)
+    # "Incidences des coûts annuels*" (ODDO), "Impact sur les coûts annuels
+    # (*)" (iShares), "Incidence des coûts annuels**" (Amundi / CPR)
+    impact = (
+        r"(?:Incidences? des co[ûu]ts|Impact sur les co[ûu]ts)(?: annuels)?\s*\(?\*{0,2}\)?\s*"
+        r"(.*?)(?=\(?\*|Elle montre|Cela illustre|Ceci illustre)"
+    )
+    m = re.search(r"Co[ûu]ts? totaux?\s+(.*?)" + impact, flat) or re.search(r"Co[ûu]t total\s+(.*?)" + impact, flat)
     if not m:
         return None, None, None, None
-    amounts = re.findall(MONEY_FR, m.group(1))
+    amounts = [(amount, symbol) for _, amount, symbol in _find_money(m.group(1))]
     pcts = re.findall(PCT_FR, m.group(2))
     if not amounts or not pcts:
         return None, None, None, None
@@ -312,12 +443,18 @@ def extract_total_costs(flat):
 
 
 def extract_cost_example_investment(flat):
-    m = re.search(r"(?:Investissement|Exemple d'investissement)\s*:?\s*" + MONEY_FR + r"\s*Si vous sortez", flat)
+    m = re.search(
+        r"(?:Investissement|Exemple d'investissement)\s*:?\s*(?:" + MONEY_FR + "|" + MONEY_FR_PREFIX + r")\s*(?:Sc[ée]narios\s*)?Si vous sortez",
+        flat,
+    )
     if m:
-        return _money(m.group(1), m.group(2))
+        if m.group(1) is not None:
+            return _money(m.group(1), m.group(2))
+        return _money(m.group(4), m.group(3))
     m = re.search(AMOUNT + r"\s*(euros|EUR|€)\s*(?:sont|est)\s*investis?", flat)
     if m:
-        return {"value": parse_amount(m.group(1)), "currency": "EUR"}
+        # abs(): Indépendance lists it as "; -10 000 EUR sont investis"
+        return {"value": abs(parse_amount(m.group(1))), "currency": "EUR"}
     # Robeco: currency code before the amount ("EUR 10,000 est investi")
     m = re.search(r"\b(EUR|USD|GBP|CHF)\s" + AMOUNT + r"\s*(?:sont|est)\s*investis?", flat)
     if m:
@@ -328,7 +465,7 @@ def extract_cost_example_investment(flat):
 def extract_cost_breakdown(flat):
     m = re.search(r"COMPOSITION DES CO[UÛ]TS|Composition des co[ûu]ts", flat)
     section = flat[m.end():] if m else flat
-    em = re.search(r"COMBIEN DE TEMPS|Combien de temps", section)
+    em = re.search(COST_SECTION_END, section)
     if em:
         section = section[:em.start()]
 
@@ -348,9 +485,9 @@ def extract_cost_breakdown(flat):
         chunk = re.sub(r"\s+", " ", chunk).strip()
 
         pct_m = re.search(PCT_FR, chunk)
-        amount_ms = list(re.finditer(MONEY_FR, chunk))
-        amount = _money(amount_ms[-1].group(1), amount_ms[-1].group(2)) if amount_ms else None
-        description = chunk[:amount_ms[-1].start()] if amount_ms else chunk
+        amount_ms = _find_money(chunk)
+        amount = _money(amount_ms[-1][1], amount_ms[-1][2]) if amount_ms else None
+        description = chunk[:amount_ms[-1][0].start()] if amount_ms else chunk
         description = re.sub(r"\b[Jj]usqu'à\s*$", "", description.strip())
 
         breakdown[key] = {

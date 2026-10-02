@@ -57,10 +57,17 @@ automatically and parsed with their own pattern set
 - **FFG / Waystone**
 - **La Française**
 - **Eiffel Investment Group** (ELTIF)
+- **BlackRock / iShares** and **Amundi** (French versions of their KIDs)
+- **CPR Asset Management**
+- **ODDO BHF Asset Management**
+- **Natixis Investment Managers** (Mirova)
+- **Indépendance AM**
+- **Société Générale Investment Solutions** (Bourso Invest FIVG)
 
 French issuers mix three number formats ("10 000 €", "10.000 EUR",
 "10,000 EUR"); amounts with exactly three digits after a separator are read
-as thousands, everything else as decimals. Scenario keys stay in English
+as thousands, everything else as decimals. The currency may also come first
+("€4 380", "EUR 10 000"). Scenario keys stay in English
 (`stress`, `unfavourable`, `moderate`, `favourable`) whatever the language.
 
 ## Contributing
